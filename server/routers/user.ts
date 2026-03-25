@@ -3,10 +3,24 @@ import { router, protectedProcedure } from "../trpc";
 
 export const userRouter = router({
   me: protectedProcedure.query(async ({ ctx }) => {
-    const dbUser = await ctx.db.user.findUnique({
-      where: { auth0Id: ctx.user.sub },
+    const { sub, email, name, picture } = ctx.user;
+
+    const dbUser = await ctx.db.user.upsert({
+      where: { auth0Id: sub },
+      create: {
+        auth0Id: sub,
+        email: email ?? "",
+        name: name ?? null,
+        picture: picture ?? null,
+      },
+      update: {
+        email: email ?? undefined,
+        name: name ?? undefined,
+        picture: picture ?? undefined,
+      },
       include: { onboarding: true },
     });
+
     return dbUser;
   }),
 

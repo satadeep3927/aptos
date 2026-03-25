@@ -1,15 +1,24 @@
+import { useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/router";
 import { ArrowRight, LogOut } from "lucide-react";
 
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 
 export function Navbar() {
+  const router = useRouter();
   const { data: user, isLoading } = trpc.user.me.useQuery(undefined, {
     retry: false,
     refetchOnWindowFocus: false,
   });
+
+  useEffect(() => {
+    if (user && !user.onboarded && router.pathname !== "/onboarding") {
+      router.push("/onboarding");
+    }
+  }, [user, router]);
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-neutral-800/60 bg-[#0a0a0a]/80 backdrop-blur-xl">
