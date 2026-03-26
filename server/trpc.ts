@@ -7,9 +7,10 @@ import { db } from "@/lib/db";
 
 export async function createContext(opts: CreateNextContextOptions) {
   const session = await auth0.getSession(opts.req);
+  const prisma = await db;
 
   return {
-    db,
+    db: prisma,
     session,
     user: session?.user ?? null,
   };

@@ -331,7 +331,7 @@ export default function Home() {
             </p>
             <Button
               size="lg"
-              className="mt-2 gap-2 bg-neutral-900 px-8 text-base font-semibold text-[#E4FF30] shadow-lg transition hover:bg-neutral-800"
+              className="mt-2 gap-2 bg-neutral-900 px-8 text-base font-semibold text-[#E4FF30] shadow-lg transition hover:bg-neutral-800!"
               asChild
             >
               <a href="/auth/login?screen_hint=signup">Start Practicing Now <ArrowRight className="size-4" /></a>
