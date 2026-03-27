@@ -15,10 +15,11 @@ export interface Question {
   question: string;
   options: { A: string; B: string; C: string; D: string; E: string };
   answer: "A" | "B" | "C" | "D" | "E";
+  reasoning: string;
   explanation: string;
 }
 
-export type QuestionForClient = Omit<Question, "answer" | "explanation">;
+export type QuestionForClient = Omit<Question, "answer" | "reasoning" | "explanation">;
 
 export interface CategoryBreakdown {
   category: string;
@@ -43,6 +44,7 @@ const questionSchema = z.object({
     E: z.string(),
   }),
   answer: z.enum(["A", "B", "C", "D", "E"]),
+  reasoning: z.string(), // why the answer is correct AND why others are wrong
   explanation: z.string(),
 });
 
@@ -93,7 +95,7 @@ function buildCategoryPrompt(
       ? "\n- Use LaTeX inline math with single dollar signs: $...$ for formulas"
       : "";
 
-  return `You are a psychometric test expert. Generate exactly ${count} ${CATEGORY_LABELS[category]} questions for the ${testName}.
+  return `You are a psychometric test expert. Generate exactly ${count} high-quality ${CATEGORY_LABELS[category]} questions for the ${testName}.
 
 Requirements:
 - All questions must have category: "${category}"
@@ -101,7 +103,15 @@ Requirements:
 - Difficulty distribution: ~40% easy (1), ~40% medium (2), ~20% hard (3)${mathNote}
 - Questions must be realistic and match the actual difficulty and style of the ${testName}
 - Each question must have exactly 5 answer options (A through E)
-- Vary question types within ${CATEGORY_LABELS[category]}`;
+- Vary question types within ${CATEGORY_LABELS[category]}
+
+QUALITY RULES (strictly enforced):
+- The correct answer must be UNAMBIGUOUSLY correct — only one option can be right
+- The question must contain ALL information needed to determine the answer; do not rely on unstated assumptions
+- Wrong options (distractors) must be plausibly wrong, not also-correct
+- For verbal questions: if the question asks "which color is X", the question text MUST explicitly state what color X is
+- Before finalising each question, verify: "Given only the question text, is there exactly one defensible correct answer?"
+- Fill the "reasoning" field with: (a) proof that your chosen answer is correct, and (b) brief reason each other option is wrong`;
 }
 
 function buildRecommendationPrompt(
@@ -237,7 +247,7 @@ export const testRouter = router({
       if (session.completed) {
         // For a completed session: return questions with correct answers + user's saved answers
         const savedAnswers = (session.answers ?? {}) as Record<string, "A" | "B" | "C" | "D" | "E">;
-        const questions = fullQuestions.map(({ explanation: _e, ...q }) => q);
+        const questions = fullQuestions.map(({ explanation: _e, reasoning: _r, ...q }) => q);
         return {
           sessionId: session.id,
           testType: session.testType as "ccat" | "wonderlic",
@@ -249,9 +259,9 @@ export const testRouter = router({
         };
       }
 
-      // Active session: strip answers and explanations (anti-cheat)
+      // Active session: strip answers, reasoning and explanations (anti-cheat)
       const questions = fullQuestions.map(
-        ({ answer: _a, explanation: _e, ...q }): QuestionForClient => q
+        ({ answer: _a, reasoning: _r, explanation: _e, ...q }): QuestionForClient => q
       );
 
       return {
