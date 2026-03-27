@@ -206,7 +206,7 @@ export const testRouter = router({
           ({ category, count, idStart }) =>
             () =>
               generateText({
-                model: copilot.languageModel("gpt-4.1"),
+                model: copilot.languageModel("gpt-5-mini"),
                 output: Output.object({ schema: questionsOutputSchema }),
                 prompt: buildCategoryPrompt(input.testType, category, count, idStart),
               }).then(({ output }) => output.questions)
@@ -321,7 +321,7 @@ export const testRouter = router({
 
       // Generate recommendation
       const { text: recommendationMd } = await generateText({
-        model: copilot.languageModel("gpt-4.1"),
+        model: copilot.languageModel("gpt-5-mini"),
         prompt: buildRecommendationPrompt(
           session.testType as "ccat" | "wonderlic",
           score,
