@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
-import { Clock, ChevronLeft, ChevronRight, Loader2, AlertCircle } from "lucide-react";
+import { Clock, ChevronLeft, ChevronRight, Loader2, AlertCircle, CheckCircle2, XCircle, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { trpc } from "@/lib/trpc";
@@ -27,6 +27,7 @@ export default function ActiveTestPage() {
   const [autoSubmitted, setAutoSubmitted] = useState(false);
   const startTimeRef = useRef<number>(Date.now());
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const hasSubmittedRef = useRef(false);
 
   const { data: session, isLoading, error } = trpc.test.getSession.useQuery(
     { sessionId },
@@ -38,21 +39,33 @@ export default function ActiveTestPage() {
       router.push(`/test/results/${sessionId}`);
     },
     onError: () => {
+      hasSubmittedRef.current = false;
       setSubmitting(false);
     },
   });
 
-  // Initialise timer once session loads
+  // Initialise timer once session loads (only for active sessions)
   useEffect(() => {
-    if (!session) return;
+    if (!session || session.completed) return;
     const limit = TIME_LIMITS[session.testType];
     setTimeLeft(limit);
     startTimeRef.current = Date.now();
   }, [session]);
 
+  // Pre-fill answers for completed sessions
+  useEffect(() => {
+    if (!session?.completed || !session.savedAnswers) return;
+    const prefilled: Record<number, "A" | "B" | "C" | "D" | "E"> = {};
+    for (const [k, v] of Object.entries(session.savedAnswers)) {
+      prefilled[Number(k)] = v;
+    }
+    setAnswers(prefilled);
+  }, [session]);
+
   const handleSubmit = useCallback(
     (forced = false) => {
-      if (submitting || !session) return;
+      if (hasSubmittedRef.current || !session) return;
+      hasSubmittedRef.current = true;
       setSubmitting(true);
       if (forced) setAutoSubmitted(true);
       if (timerRef.current) clearInterval(timerRef.current);
@@ -65,10 +78,10 @@ export default function ActiveTestPage() {
         timeTaken,
       });
     },
-    [submitting, session, sessionId, answers, submitMutation]
+    [session, sessionId, answers, submitMutation]
   );
 
-  // Countdown
+  // Countdown (active sessions only)
   useEffect(() => {
     if (timeLeft === null) return;
     timerRef.current = setInterval(() => {
@@ -105,7 +118,9 @@ export default function ActiveTestPage() {
     );
   }
 
-  const questions: QuestionForClient[] = session.questions as QuestionForClient[];
+  const isReview = session.completed;
+  // For review mode, questions include `answer` field; cast accordingly
+  const questions = session.questions as (QuestionForClient & { answer?: "A" | "B" | "C" | "D" | "E" })[];
   const q = questions[currentIdx];
   const answered = Object.keys(answers).length;
   const total = questions.length;
@@ -113,11 +128,17 @@ export default function ActiveTestPage() {
   const isUrgent = timeLeft !== null && timeLeft < 60;
   const canSubmit = answered > 0 && !submitting;
 
+  // Review-mode helpers for the current question
+  const userAnswer = answers[q.id] ?? null;
+  const correctAnswer = q.answer ?? null;
+  const isCorrect = isReview && userAnswer !== null && userAnswer === correctAnswer;
+  const isWrong = isReview && userAnswer !== null && userAnswer !== correctAnswer;
+
   return (
     <>
       <Head>
         <title>
-          {session.testType.toUpperCase()} Practice — Aptos
+          {isReview ? "Review — " : ""}{session.testType.toUpperCase()} Practice — Aptos
         </title>
       </Head>
       <div className="min-h-screen bg-[#0a0a0a] text-white">
@@ -125,7 +146,16 @@ export default function ActiveTestPage() {
         <div className="sticky top-0 z-40 border-b border-neutral-800/60 bg-[#0a0a0a]/95 backdrop-blur-xl">
           <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
             <span className="text-sm font-medium text-neutral-400">
-              {session.testType.toUpperCase()} — Q{currentIdx + 1}/{total}
+              {isReview ? (
+                <span className="flex items-center gap-2">
+                  <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-400">
+                    Review Mode
+                  </span>
+                  {session.testType.toUpperCase()} — Q{currentIdx + 1}/{total}
+                </span>
+              ) : (
+                `${session.testType.toUpperCase()} — Q${currentIdx + 1}/${total}`
+              )}
             </span>
 
             {/* Progress bar */}
@@ -136,18 +166,33 @@ export default function ActiveTestPage() {
               />
             </div>
 
-            {/* Timer */}
-            <div
-              className={cn(
-                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-mono font-bold tabular-nums",
-                isUrgent
-                  ? "bg-red-500/20 text-red-400 animate-pulse"
-                  : "bg-neutral-800 text-neutral-200"
-              )}
-            >
-              <Clock className="size-3.5" />
-              {timeLeft !== null ? formatTime(timeLeft) : "--:--"}
-            </div>
+            {/* Timer (active) or score (review) */}
+            {isReview ? (
+              <div className="flex items-center gap-2">
+                <span className="rounded-lg bg-neutral-800 px-3 py-1.5 text-sm font-bold text-neutral-200">
+                  Score: {session.score}/50
+                </span>
+                <Button
+                  size="sm"
+                  onClick={() => router.push(`/test/results/${sessionId}`)}
+                  className="h-8 gap-1.5 bg-[#E4FF30] text-xs font-semibold text-neutral-900 hover:bg-[#d4ef20]"
+                >
+                  Full Results <ExternalLink className="size-3" />
+                </Button>
+              </div>
+            ) : (
+              <div
+                className={cn(
+                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-mono font-bold tabular-nums",
+                  isUrgent
+                    ? "animate-pulse bg-red-500/20 text-red-400"
+                    : "bg-neutral-800 text-neutral-200"
+                )}
+              >
+                <Clock className="size-3.5" />
+                {timeLeft !== null ? formatTime(timeLeft) : "--:--"}
+              </div>
+            )}
           </div>
         </div>
 
@@ -155,7 +200,12 @@ export default function ActiveTestPage() {
           {/* Main content */}
           <div>
             {/* Question */}
-            <div className="mb-6 rounded-xl border border-neutral-800 bg-neutral-900/60 p-6">
+            <div className={cn(
+              "mb-6 rounded-xl border bg-neutral-900/60 p-6",
+              isReview && isCorrect ? "border-emerald-500/40" :
+              isReview && isWrong ? "border-red-500/40" :
+              "border-neutral-800"
+            )}>
               <div className="mb-4 flex items-center gap-3">
                 <span className="rounded-full bg-[#E4FF30]/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-[#E4FF30]">
                   {q.category}
@@ -163,6 +213,13 @@ export default function ActiveTestPage() {
                 <span className="text-xs text-neutral-500">
                   {"●".repeat(q.difficulty)}{"○".repeat(3 - q.difficulty)}
                 </span>
+                {isReview && (
+                  isCorrect
+                    ? <CheckCircle2 className="ml-auto size-5 text-emerald-400" />
+                    : isWrong
+                    ? <XCircle className="ml-auto size-5 text-red-400" />
+                    : <span className="ml-auto text-xs text-neutral-500">Not answered</span>
+                )}
               </div>
               <MarkdownRenderer content={q.question} variant="full" />
             </div>
@@ -172,15 +229,26 @@ export default function ActiveTestPage() {
               {(["A", "B", "C", "D", "E"] as const).map((letter) => {
                 const optionText = q.options[letter];
                 const isSelected = answers[q.id] === letter;
+                const isCorrectOption = isReview && correctAnswer === letter;
+                const isWrongSelected = isReview && isSelected && !isCorrectOption;
+
                 return (
                   <button
                     key={letter}
-                    onClick={() =>
-                      setAnswers((prev) => ({ ...prev, [q.id]: letter }))
-                    }
+                    onClick={() => {
+                      if (isReview) return; // read-only in review mode
+                      setAnswers((prev) => ({ ...prev, [q.id]: letter }));
+                    }}
+                    disabled={isReview}
                     className={cn(
                       "flex w-full items-start gap-4 rounded-xl border p-4 text-left transition-all duration-150",
-                      isSelected
+                      isReview
+                        ? isCorrectOption
+                          ? "border-emerald-500/60 bg-emerald-500/10 text-white"
+                          : isWrongSelected
+                          ? "border-red-500/60 bg-red-500/10 text-white"
+                          : "border-neutral-800 bg-neutral-900/40 text-neutral-500 opacity-60"
+                        : isSelected
                         ? "border-[#E4FF30]/50 bg-[#E4FF30]/10 text-white"
                         : "border-neutral-800 bg-neutral-900/40 text-neutral-300 hover:border-neutral-600 hover:bg-neutral-800/60"
                     )}
@@ -188,7 +256,13 @@ export default function ActiveTestPage() {
                     <span
                       className={cn(
                         "flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-bold",
-                        isSelected
+                        isReview
+                          ? isCorrectOption
+                            ? "bg-emerald-400 text-neutral-900"
+                            : isWrongSelected
+                            ? "bg-red-400 text-white"
+                            : "bg-neutral-700 text-neutral-400"
+                          : isSelected
                           ? "bg-[#E4FF30] text-neutral-900"
                           : "bg-neutral-700 text-neutral-300"
                       )}
@@ -221,6 +295,14 @@ export default function ActiveTestPage() {
                   Next
                   <ChevronRight className="ml-1 size-4" />
                 </Button>
+              ) : isReview ? (
+                <Button
+                  onClick={() => router.push(`/test/results/${sessionId}`)}
+                  className="bg-[#E4FF30] font-semibold text-neutral-900 hover:bg-[#d4ef20]"
+                >
+                  See Full Results
+                  <ExternalLink className="ml-2 size-4" />
+                </Button>
               ) : (
                 <Button
                   onClick={() => handleSubmit(false)}
@@ -236,8 +318,8 @@ export default function ActiveTestPage() {
               )}
             </div>
 
-            {/* Can submit from any question */}
-            {currentIdx < total - 1 && canSubmit && (
+            {/* Finish early link (active sessions only) */}
+            {!isReview && currentIdx < total - 1 && canSubmit && (
               <div className="mt-4 text-center">
                 <button
                   onClick={() => handleSubmit(false)}
@@ -264,8 +346,12 @@ export default function ActiveTestPage() {
               </p>
               <div className="grid grid-cols-5 gap-1">
                 {questions.map((question, i) => {
-                  const isAnswered = !!answers[question.id];
+                  const ua = answers[question.id];
+                  const ca = question.answer;
                   const isCurrent = i === currentIdx;
+                  const correct = isReview && ua && ca && ua === ca;
+                  const wrong = isReview && ua && ca && ua !== ca;
+                  const isAnswered = !isReview && !!ua;
                   return (
                     <button
                       key={question.id}
@@ -274,6 +360,10 @@ export default function ActiveTestPage() {
                         "flex size-8 items-center justify-center rounded text-xs font-medium transition-all",
                         isCurrent
                           ? "bg-[#E4FF30] text-neutral-900"
+                          : correct
+                          ? "bg-emerald-600 text-white"
+                          : wrong
+                          ? "bg-red-600 text-white"
                           : isAnswered
                           ? "bg-neutral-600 text-white"
                           : "bg-neutral-800 text-neutral-500 hover:bg-neutral-700"
@@ -288,16 +378,38 @@ export default function ActiveTestPage() {
                 <div className="flex items-center gap-2">
                   <span className="size-3 rounded bg-[#E4FF30]" /> Current
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="size-3 rounded bg-neutral-600" /> Answered
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="size-3 rounded bg-neutral-800" /> Unanswered
-                </div>
+                {isReview ? (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="size-3 rounded bg-emerald-600" /> Correct
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="size-3 rounded bg-red-600" /> Incorrect
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="size-3 rounded bg-neutral-600" /> Answered
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="size-3 rounded bg-neutral-800" /> Unanswered
+                    </div>
+                  </>
+                )}
               </div>
               <div className="mt-4 border-t border-neutral-800 pt-4 text-center">
-                <span className="text-sm font-bold text-[#E4FF30]">{answered}</span>
-                <span className="text-xs text-neutral-500">/{total} answered</span>
+                {isReview ? (
+                  <>
+                    <span className="text-sm font-bold text-emerald-400">{session.score}</span>
+                    <span className="text-xs text-neutral-500">/{total} correct</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-sm font-bold text-[#E4FF30]">{answered}</span>
+                    <span className="text-xs text-neutral-500">/{total} answered</span>
+                  </>
+                )}
               </div>
             </div>
           </div>

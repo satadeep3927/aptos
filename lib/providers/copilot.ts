@@ -15,11 +15,16 @@ import {
 
 let _copilotToken = "";
 let _copilotTokenExpiresAt = 0;
+let _refreshInFlight: Promise<string> | null = null;
 
 /**
  * Exchange a GitHub Personal Access Token for a short-lived Copilot access
  * token.  The result is cached and only refreshed when it expires (with a
- * 60-second buffer), mirroring the Python `_refresh_copilot_token` method.
+ * 60-second buffer).
+ *
+ * Concurrent callers are coalesced onto a single in-flight request so that
+ * parallel generateText() calls (e.g. Promise.all batches) never trigger
+ * multiple simultaneous token exchanges.
  */
 async function refreshCopilotToken(githubToken: string): Promise<string> {
   const now = Date.now() / 1000;
@@ -27,32 +32,45 @@ async function refreshCopilotToken(githubToken: string): Promise<string> {
     return _copilotToken;
   }
 
-  const response = await fetch(COPILOT_TOKEN_URL, {
-    headers: {
-      authorization: `token ${githubToken}`,
-      ...COPILOT_HEADERS,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(
-      `Failed to obtain Copilot access token: ${response.status} - ${await response.text()}`
-    );
+  // Coalesce: reuse the existing in-flight refresh if one is already running
+  if (_refreshInFlight) {
+    return _refreshInFlight;
   }
 
-  const payload = (await response.json()) as {
-    token?: string;
-    expires_at?: number;
-  };
+  _refreshInFlight = (async () => {
+    try {
+      const response = await fetch(COPILOT_TOKEN_URL, {
+        headers: {
+          authorization: `token ${githubToken}`,
+          ...COPILOT_HEADERS,
+        },
+      });
 
-  if (!payload.token) {
-    throw new Error("Copilot token response did not contain a token.");
-  }
+      if (!response.ok) {
+        throw new Error(
+          `Failed to obtain Copilot access token: ${response.status} - ${await response.text()}`
+        );
+      }
 
-  _copilotToken = payload.token;
-  _copilotTokenExpiresAt = Number(payload.expires_at ?? 0);
+      const payload = (await response.json()) as {
+        token?: string;
+        expires_at?: number;
+      };
 
-  return _copilotToken;
+      if (!payload.token) {
+        throw new Error("Copilot token response did not contain a token.");
+      }
+
+      _copilotToken = payload.token;
+      _copilotTokenExpiresAt = Number(payload.expires_at ?? 0);
+
+      return _copilotToken;
+    } finally {
+      _refreshInFlight = null;
+    }
+  })();
+
+  return _refreshInFlight;
 }
 
 // ---------------------------------------------------------------------------

@@ -157,6 +157,30 @@ Keep the tone encouraging but honest. Use LaTeX for any mathematical formulas or
 // Router
 // ---------------------------------------------------------------------------
 
+/**
+ * Run an array of async tasks with at most `limit` running concurrently.
+ * Preserves result order.
+ */
+async function runConcurrent<T>(
+  tasks: (() => Promise<T>)[],
+  limit: number
+): Promise<T[]> {
+  const results: T[] = new Array(tasks.length);
+  let next = 0;
+
+  async function worker() {
+    while (next < tasks.length) {
+      const i = next++;
+      results[i] = await tasks[i]();
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(limit, tasks.length) }, () => worker())
+  );
+  return results;
+}
+
 export const testRouter = router({
   generate: protectedProcedure
     .input(z.object({ testType: z.enum(["ccat", "wonderlic"]) }))
@@ -166,15 +190,18 @@ export const testRouter = router({
       });
       if (!dbUser) throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
 
-      // Generate all 5 category batches in parallel
-      const batches = await Promise.all(
-        CATEGORY_BATCHES.map(({ category, count, idStart }) =>
-          generateText({
-            model: copilot.languageModel("gpt-4.1"),
-            output: Output.object({ schema: questionsOutputSchema }),
-            prompt: buildCategoryPrompt(input.testType, category, count, idStart),
-          }).then(({ output }) => output.questions)
-        )
+      // Generate category batches sequentially to avoid Copilot API rate-limiting
+      const batches = await runConcurrent(
+        CATEGORY_BATCHES.map(
+          ({ category, count, idStart }) =>
+            () =>
+              generateText({
+                model: copilot.languageModel("gpt-4.1"),
+                output: Output.object({ schema: questionsOutputSchema }),
+                prompt: buildCategoryPrompt(input.testType, category, count, idStart),
+              }).then(({ output }) => output.questions)
+        ),
+        1
       );
 
       const questions: Question[] = batches.flat().sort((a, b) => a.id - b.id);
@@ -205,8 +232,25 @@ export const testRouter = router({
       if (!session) throw new TRPCError({ code: "NOT_FOUND", message: "Session not found" });
       if (session.userId !== dbUser.id) throw new TRPCError({ code: "FORBIDDEN" });
 
-      // Strip answers and explanations before returning to client
-      const questions = (session.questions as unknown as Question[]).map(
+      const fullQuestions = session.questions as unknown as Question[];
+
+      if (session.completed) {
+        // For a completed session: return questions with correct answers + user's saved answers
+        const savedAnswers = (session.answers ?? {}) as Record<string, "A" | "B" | "C" | "D" | "E">;
+        const questions = fullQuestions.map(({ explanation: _e, ...q }) => q);
+        return {
+          sessionId: session.id,
+          testType: session.testType as "ccat" | "wonderlic",
+          questions,
+          completed: true,
+          createdAt: session.createdAt,
+          savedAnswers,
+          score: session.score ?? 0,
+        };
+      }
+
+      // Active session: strip answers and explanations (anti-cheat)
+      const questions = fullQuestions.map(
         ({ answer: _a, explanation: _e, ...q }): QuestionForClient => q
       );
 
@@ -214,8 +258,10 @@ export const testRouter = router({
         sessionId: session.id,
         testType: session.testType as "ccat" | "wonderlic",
         questions,
-        completed: session.completed,
+        completed: false,
         createdAt: session.createdAt,
+        savedAnswers: undefined as undefined,
+        score: undefined as undefined,
       };
     }),
 
