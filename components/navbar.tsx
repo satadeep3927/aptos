@@ -43,6 +43,11 @@ export function Navbar() {
           <a href="#how-it-works" className="transition hover:text-[#E4FF30]">
             How It Works
           </a>
+          {user?.onboarded && (
+            <Link href="/test" className="transition hover:text-[#E4FF30]">
+              Practice
+            </Link>
+          )}
         </nav>
 
         <div className="flex items-center gap-3">

@@ -17,9 +17,44 @@ model User {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  onboarding Onboarding?
+  onboarding      Onboarding?
+  testSessions    TestSession[]
+  recommendations Recommendation[]
 
   @@map("users")
+}
+
+model TestSession {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  testType  String   @map("test_type")   // "ccat" | "wonderlic"
+  questions Json                          // Array of 50 Question objects (includes answers)
+  answers   Json?                         // Record<number, "A"|"B"|"C"|"D"|"E">
+  score     Int?
+  timeTaken Int?     @map("time_taken")  // seconds used
+  completed Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recommendation Recommendation?
+
+  @@map("test_sessions")
+}
+
+model Recommendation {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  sessionId String   @unique @map("session_id")
+  content   String   // Markdown + KaTeX string
+  score     Int
+  testType  String   @map("test_type")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session TestSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("recommendations")
 }
 
 model Onboarding {
