@@ -1,12 +1,12 @@
-import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/router";
-import Head from "next/head";
-import Link from "next/link";
-import { ArrowRight, Brain, Clock, BarChart3, Loader2 } from "lucide-react";
+import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
-import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { trpc } from "@/lib/trpc";
+import { ArrowRight, BarChart3, Brain, Clock, Loader2 } from "lucide-react";
+import Head from "next/head";
+import Link from "next/link";
+import { useRouter } from "next/router";
+import { useEffect, useRef, useState } from "react";
 
 const TEST_CONFIGS = {
   ccat: {
@@ -95,7 +95,7 @@ export default function TestIndexPage() {
             </div>
             <h1 className="mb-4 text-4xl font-bold tracking-tight md:text-5xl">
               Ready to{" "}
-              <span className="bg-gradient-to-r from-[#E4FF30] to-lime-400 bg-clip-text text-transparent">
+              <span className="bg-linear-to-r from-[#E4FF30] to-lime-400 bg-clip-text text-transparent">
                 Practice?
               </span>
             </h1>
@@ -114,7 +114,7 @@ export default function TestIndexPage() {
               return (
                 <div
                   key={type}
-                  className={`relative overflow-hidden rounded-2xl border bg-gradient-to-br ${cfg.color} ${cfg.border} p-8 transition-all duration-200`}
+                  className={`relative overflow-hidden rounded-2xl border bg-linear-to-br ${cfg.color} ${cfg.border} p-8 transition-all duration-200`}
                 >
                   <div className="mb-6">
                     <span
@@ -180,7 +180,7 @@ export default function TestIndexPage() {
                 </span>
               </div>
               <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-6">
-                <MarkdownRenderer content={latestRec.content} variant="full" />
+                <MarkdownRenderer content={latestRec.content} variant="full" className=" leading-loose" />
               </div>
               <div className="mt-4 text-right">
                 <Link

@@ -152,7 +152,7 @@ export default function ResultsPage() {
                 </h2>
               </div>
               <div className="rounded-xl border border-[#E4FF30]/20 bg-[#E4FF30]/5 p-6">
-                <MarkdownRenderer content={data.recommendation} variant="full" />
+                <MarkdownRenderer content={data.recommendation} className="leading-loose" variant="full" />
               </div>
             </div>
           )}

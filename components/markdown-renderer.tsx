@@ -19,7 +19,7 @@ export function MarkdownRenderer({
   return (
     <div
       className={cn(
-        "prose prose-invert max-w-none",
+        "prose prose-invert max-w-none text-neutral-300",
         variant === "compact"
           ? "prose-sm [&>p]:my-0 [&>p]:inline"
           : [
