@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
 import Link from "next/link";
@@ -38,6 +38,26 @@ const TEST_CONFIGS = {
 export default function TestIndexPage() {
   const router = useRouter();
   const [generating, setGenerating] = useState<"ccat" | "wonderlic" | null>(null);
+  const [batchStep, setBatchStep] = useState(0);
+  const batchIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const BATCH_LABELS = ["Math", "Verbal", "Logic", "Pattern", "Spatial"];
+
+  // Advance fake batch counter while generating
+  useEffect(() => {
+    if (generating) {
+      setBatchStep(0);
+      batchIntervalRef.current = setInterval(() => {
+        setBatchStep((s) => (s < BATCH_LABELS.length - 1 ? s + 1 : s));
+      }, 8000);
+    } else {
+      if (batchIntervalRef.current) clearInterval(batchIntervalRef.current);
+      setBatchStep(0);
+    }
+    return () => {
+      if (batchIntervalRef.current) clearInterval(batchIntervalRef.current);
+    };
+  }, [generating]);
 
   const { data: latestRec } = trpc.test.getLatestRecommendation.useQuery(undefined, {
     retry: false,
@@ -126,10 +146,15 @@ export default function TestIndexPage() {
                     size="lg"
                   >
                     {isGenerating ? (
-                      <>
-                        <Loader2 className="mr-2 size-4 animate-spin" />
-                        Generating questions…
-                      </>
+                      <span className="flex items-center gap-2">
+                        <Loader2 className="size-4 animate-spin" />
+                        <span>
+                          Generating {BATCH_LABELS[batchStep]} batch&nbsp;
+                          <span className="text-white/60">
+                            ({batchStep + 1}/{BATCH_LABELS.length})
+                          </span>
+                        </span>
+                      </span>
                     ) : (
                       <>
                         Start Test

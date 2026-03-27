@@ -51,24 +51,57 @@ const questionsOutputSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Batch generation config
+// ---------------------------------------------------------------------------
+
+const CATEGORY_BATCHES: Array<{
+  category: Question["category"];
+  count: number;
+  idStart: number;
+}> = [
+  { category: "math",    count: 13, idStart: 1  },
+  { category: "verbal",  count: 13, idStart: 14 },
+  { category: "logic",   count: 12, idStart: 27 },
+  { category: "pattern", count: 7,  idStart: 39 },
+  { category: "spatial", count: 5,  idStart: 46 },
+];
+
+const CATEGORY_LABELS: Record<Question["category"], string> = {
+  math:    "mathematical reasoning",
+  verbal:  "verbal reasoning",
+  logic:   "logical reasoning",
+  pattern: "pattern recognition",
+  spatial: "spatial reasoning",
+};
+
+// ---------------------------------------------------------------------------
 // Prompts
 // ---------------------------------------------------------------------------
 
-function buildGeneratePrompt(testType: "ccat" | "wonderlic"): string {
+function buildCategoryPrompt(
+  testType: "ccat" | "wonderlic",
+  category: Question["category"],
+  count: number,
+  idStart: number
+): string {
   const testName =
     testType === "ccat"
       ? "Criteria Cognitive Aptitude Test (CCAT)"
       : "Wonderlic Personnel Test";
+  const mathNote =
+    category === "math"
+      ? "\n- Use LaTeX inline math with single dollar signs: $...$ for formulas"
+      : "";
 
-  return `You are a psychometric test expert. Generate exactly 50 multiple-choice questions for the ${testName}.
+  return `You are a psychometric test expert. Generate exactly ${count} ${CATEGORY_LABELS[category]} questions for the ${testName}.
 
 Requirements:
-- Distribution: 13 math, 13 verbal, 12 logic, 7 pattern recognition, 5 spatial reasoning
-- Difficulty distribution: ~40% easy (1), ~40% medium (2), ~20% hard (3)
-- For math questions, use LaTeX inline math with single dollar signs: $...$ for formulas
+- All questions must have category: "${category}"
+- Assign IDs ${idStart} through ${idStart + count - 1} (inclusive, no gaps)
+- Difficulty distribution: ~40% easy (1), ~40% medium (2), ~20% hard (3)${mathNote}
 - Questions must be realistic and match the actual difficulty and style of the ${testName}
 - Each question must have exactly 5 answer options (A through E)
-- Vary question types within each category (e.g., math: arithmetic, fractions, percentages, ratios, word problems)`;
+- Vary question types within ${CATEGORY_LABELS[category]}`;
 }
 
 function buildRecommendationPrompt(
@@ -133,13 +166,18 @@ export const testRouter = router({
       });
       if (!dbUser) throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
 
-      const { output } = await generateText({
-        model: copilot.languageModel("gpt-4.1"),
-        output: Output.object({ schema: questionsOutputSchema }),
-        prompt: buildGeneratePrompt(input.testType),
-      });
+      // Generate all 5 category batches in parallel
+      const batches = await Promise.all(
+        CATEGORY_BATCHES.map(({ category, count, idStart }) =>
+          generateText({
+            model: copilot.languageModel("gpt-4.1"),
+            output: Output.object({ schema: questionsOutputSchema }),
+            prompt: buildCategoryPrompt(input.testType, category, count, idStart),
+          }).then(({ output }) => output.questions)
+        )
+      );
 
-      const questions: Question[] = output.questions;
+      const questions: Question[] = batches.flat().sort((a, b) => a.id - b.id);
 
       const session = await ctx.db.testSession.create({
         data: {
