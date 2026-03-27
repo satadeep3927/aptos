@@ -1,20 +1,20 @@
-import Image from "next/image";
-import Head from "next/head";
-import Link from "next/link";
-import { Geist } from "next/font/google";
 import {
+  ArrowRight,
+  BarChart3,
+  BookOpen,
   Brain,
+  Clock,
+  Sparkles,
   Target,
   Zap,
-  BarChart3,
-  ArrowRight,
-  Sparkles,
-  Clock,
-  BookOpen,
 } from "lucide-react";
+import { Geist } from "next/font/google";
+import Head from "next/head";
+import Image from "next/image";
 
-import { Button } from "@/components/ui/button";
+import { Navbar } from "@/components/navbar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -22,7 +22,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Navbar } from "@/components/navbar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
